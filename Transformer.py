@@ -5,7 +5,7 @@ import torch.nn.functional as F
 torch.manual_seed(2000)
 
 # parameters
-dropout = 0.2
+dropout = 0.4
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # ---
 
@@ -14,9 +14,9 @@ class  MultiHead(nn.Module):
     
     '''Multi Head Attention Module'''
 
-    def __init__(self, n_embd, block_size, n_head, head_size):
+    def __init__(self, n_embd, block_size, n_head, head_size, mask=True):
         super().__init__()
-        self.heads = nn.ModuleList([Head(n_embd, block_size, head_size) for _  in  range(n_head)])
+        self.heads = nn.ModuleList([Head(n_embd, block_size, head_size, mask) for _  in  range(n_head)])
         self.proj = nn.Linear(n_head * head_size, n_embd)
         self.dropout = nn.Dropout(dropout)
 
@@ -32,13 +32,15 @@ class Head(nn.Module):
 
     ''' Single Head of Self Attention '''
     
-    def __init__(self, n_embd, block_size, head_size):
+    def __init__(self, n_embd, block_size, head_size, mask=True):
         super().__init__()
         self.key = nn.Linear(n_embd, head_size,  bias=False)
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size,  bias=False)
         self.dropout = nn.Dropout(dropout)
-        self.register_buffer('tril', torch.tril((torch.ones(block_size, block_size))))
+        self.mask =  mask
+        if self.mask:
+            self.register_buffer('tril', torch.tril((torch.ones(block_size, block_size))))
 
 
     def forward(self, x):
@@ -49,7 +51,8 @@ class Head(nn.Module):
         v = self.value(x)
 
         att = q @ k.transpose(-2, -1) / torch.sqrt(torch.tensor(C, dtype=torch.float32))
-        att = att.masked_fill(self.tril[:T, :T]==0, float('-inf'))
+        if self.mask:
+            att = att.masked_fill(self.tril[:T, :T]==0, float('-inf'))
         att = F.softmax(att, dim=-1)
         att = self.dropout(att)
 
@@ -79,10 +82,10 @@ class Block(nn.Module):
 
     '''A block consisting of MultiHeads followed by a Feed Forward'''
 
-    def  __init__(self,  n_embd, block_size, n_head):
+    def  __init__(self,  n_embd, block_size, n_head, mask=True):
         super().__init__()
         head_size = n_embd // n_head
-        self.heads = MultiHead(n_embd, block_size, n_head, head_size)
+        self.heads = MultiHead(n_embd, block_size, n_head, head_size, mask)
         self.ff = FeedForward(n_embd)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
@@ -100,11 +103,11 @@ class LanguageModel(nn.Module):
 
     '''The language model that that is trained and used to generate text'''
 
-    def __init__(self, vocab_size, n_embd=16, block_size=32, n_head=4, n_layers=4):
+    def __init__(self, vocab_size, n_embd=16, block_size=32, n_head=4, n_layers=4, mask=True):
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, n_embd)
-        self.position_embedding =  nn.Embedding(block_size, n_embd)
-        self.blocks = nn.Sequential(*[Block(n_embd, block_size, n_head) for  _ in range(n_layers)])
+        self.position_embedding = nn.Embedding(block_size, n_embd)
+        self.blocks = nn.Sequential(*[Block(n_embd, block_size, n_head, mask) for  _ in range(n_layers)])
         self.ln = nn.LayerNorm(n_embd)
         self.linear = nn.Linear(n_embd, vocab_size)
 
