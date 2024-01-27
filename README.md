@@ -1,9 +1,9 @@
 # Mini GPT
 
 - A Mini Transformer trained on Shakespeare text (available in input.txt file). 
-- `Transformer.py` contains the decoder only transformer architecture.
-- `trainer.py` is used to train the model.
-- `ClassifierTransformer.py` contains a classification model.
-- `experiment.ipynb` is a jupyter notebook used to carryout experiments on the architecture. 
+- `Transformer.py` contains the transformer architecture.
+- `GPT.py` is a decoder only transformer trained to generate text.
+- `TextClassification.py` contains a classification model.
+- `data` folder contains the data files used to train difference model and their output. 
 
-*Inspired by Andrej Karppathy's nano-gpt*
+*Inspired by Andrej Karpathy's nano-gpt*
