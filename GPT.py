@@ -8,17 +8,19 @@ Original file is located at
 """
 
 #  !pip install tiktoken
-
 import tiktoken
 import torch
-from Transformer import LanguageModel
 import time
+from Transformer import DecoderBlock
+import torch.nn as nn
+import torch.nn.functional as F
 
 tokenizer = tiktoken.get_encoding('cl100k_base')
 
-#-------
-with open('input.txt',  'r') as f:
+# reading-data
+with open('data/input.txt',  'r') as f:
     text = f.read()
+#-------
 
 # train/val split
 enc_text = tokenizer.encode(text)
@@ -38,6 +40,8 @@ learning_rate = 1e-4
 steps = 20000
 eval_step = steps // 10
 
+
+# data-loading-function
 def data_loader(split='train'):
     data = train_data if split=='train' else val_data
     rand_nums = torch.randint(len(data) - block_size, (batch_size,))
@@ -45,6 +49,8 @@ def data_loader(split='train'):
     y = torch.stack([torch.tensor(data[i+1:i+block_size+1]) for i in rand_nums]).to(device)
     return x, y
 
+
+# estimated-loss
 @torch.no_grad
 def get_loss(m):
     train_lossi = []
@@ -65,9 +71,58 @@ def get_loss(m):
     m.train()
     return train_loss, val_loss
 
-m = LanguageModel(vocab_size, block_size = block_size, n_embd = n_embd)
+
+# gpt-model
+class GPT(nn.Module):
+
+    '''The language model that that is trained and used to generate text'''
+
+    def __init__(self, vocab_size, n_embd=16, block_size=32, n_head=4, n_layers=4, mask=True):
+        super().__init__()
+        self.token_embedding = nn.Embedding(vocab_size, n_embd)
+        self.position_embedding = nn.Embedding(block_size, n_embd)
+        self.dec_blocks = nn.Sequential(*[DecoderBlock(n_embd, block_size, n_head, mask) for  _ in range(n_layers)])
+        self.ln = nn.LayerNorm(n_embd)
+        self.linear = nn.Linear(n_embd, vocab_size)
+
+
+    def forward(self, idx, targets = None):
+        B, T = idx.shape
+
+        tok_emb = self.token_embedding(idx)
+        pos_emb = self.position_embedding(torch.arange(T, device=device))
+        x = tok_emb + pos_emb
+        x = self.dec_blocks(x)
+        x = self.ln(x)
+        logits = self.linear(x)
+        if targets is not None:
+            B, T, C = logits.shape
+            logits = logits.view(B*T, C)
+            targets = targets.view(B*T)
+            loss = F.cross_entropy(logits, targets)
+        else:
+            loss = None
+        return logits, loss
+    
+
+    def generate(self, idx, num_tokens=100, block_size=32):
+        for _ in range(num_tokens):
+            idx_cond =  idx[:, -block_size:]
+            logits, loss = self(idx_cond)
+            logits = logits[:, -1, :]
+            probs = F.softmax(logits, dim=-1)
+            idx_next =  torch.multinomial(probs, num_samples=1)
+            idx = torch.cat((idx, idx_next), dim=1)
+        return idx
+
+
+# model-initialization
+
+m = GPT(vocab_size, block_size = block_size, n_embd = n_embd)
 m.to(device)
 optimizer =  torch.optim.AdamW(m.parameters(),  lr=learning_rate)
+
+# model-training
 
 st = time.time()
 
@@ -89,11 +144,13 @@ secs = int((et - st) % 60)
 print()
 print(f'Time Elasped: {mins} mins {secs} secs')
 
+# output-generation
+
 with torch.no_grad():
     input =  torch.tensor(tokenizer.encode('\n')).to(device).view(1, -1)
     output = m.generate(idx = input, num_tokens=10000, block_size=block_size)
     output = tokenizer.decode(output[0].tolist())
 
-with open('output.txt', 'w') as f:
+with open('data/output.txt', 'w') as f:
   f.write(output)
 
