@@ -43,12 +43,12 @@ class Head(nn.Module):
             self.register_buffer('tril', torch.tril((torch.ones(block_size, block_size))))
 
 
-    def forward(self, x):
-        B, T, C = x.shape
+    def forward(self, q, k, v):
+        B, T, C = q.shape
 
-        k = self.key(x)
-        q = self.query(x)
-        v = self.value(x)
+        k = self.key(k)
+        q = self.query(q)
+        v = self.value(v)
 
         att = q @ k.transpose(-2, -1) / torch.sqrt(torch.tensor(C, dtype=torch.float32))
         if self.mask:
@@ -92,7 +92,7 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x):
         x = self.ln1(x)
-        x = x + self.heads(x)
+        x = x + self.heads(x, x, x)
         x = self.ln2(x)
         out = x + self.ff(x)
         return out
@@ -102,20 +102,29 @@ class DecoderBlock(nn.Module):
 
     '''A decoder block consisting of MultiHeads followed by a Feed Forward with a default mask'''
 
-    def  __init__(self,  n_embd, block_size, n_head, mask=True):
+    def  __init__(self,  n_embd, block_size, n_head, mask=True, cross_att = False):
         super().__init__()
         head_size = n_embd // n_head
-        self.heads = MultiHead(n_embd, block_size, n_head, head_size, mask)
+        self.mask_heads = MultiHead(n_embd, block_size, n_head, head_size, mask)
+        self.heads = MultiHead(n_embd, block_size, n_head, head_size, mask=False)
         self.ff = FeedForward(n_embd)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
+        self.ln3 = nn.LayerNorm(n_embd)
+        self.cross_att = cross_att
+        
 
-
-    def forward(self, x):
+    def forward(self, x, enc_x):
         x = self.ln1(x)
-        x = x + self.heads(x)
+        x = self.mask_heads(x, x, x)
         x = self.ln2(x)
+        if self.cross_att:
+            x = x + self.heads(x, enc_x, enc_x)
+        else:
+            x = x + self.heads(x, x, x)
+        x = self.ln3(x)
         out = x + self.ff(x)
+        
         return out
 
 
