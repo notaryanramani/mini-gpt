@@ -1,6 +1,7 @@
-# Mini GPT
+# Mini Transformer
 
-- A Mini Transformer trained on Shakespeare text (available in input.txt file). 
+- A Mini Transformer project to train transformers for different task.
+
 - `Transformer.py` contains the transformer architecture.
 - `GPT.py` is a decoder only transformer trained to generate text.
 - `TextClassification.py` contains a classification model.
