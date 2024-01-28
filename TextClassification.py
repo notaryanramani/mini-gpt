@@ -20,7 +20,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 # data-processing
-df = pd.read_csv('data.csv')
+df = pd.read_csv('data/data.csv')
 x = df['text'].copy()
 y = df['sentiment'].copy()
 
@@ -38,7 +38,7 @@ target_map = {
 y = y.map(target_map)
 
 # train-test-split
-n = int(len(tokens) * 0.9)
+n = int(len(tokens) * 0.8)
 train_x, train_y = tokens[:n], list(y[:n])
 val_x, val_y = tokens[n:], list(y[n:])
 
@@ -64,26 +64,47 @@ def data_loader(split='train', block_size=32):
     return x_, y_
 
 
+def get_accuracy(y, y_hat):
+    correct = []
+    for yi, y_hati in zip(y, y_hat):
+        if yi == y_hati:
+            correct.append(1)
+        else:
+            correct.append(0)
+    return sum(correct) / len(correct)
+
+
 # loss-estimator
 @torch.no_grad()
-def get_loss(m):
+def get_metrics(m):
     train_lossi = []
     val_lossi = []
+    train_acci = []
+    val_acci = []
     m.eval()
     for _ in range(100):
         # train
         x, y = data_loader('train')
-        _, loss = m(x, y)
+        logits, loss = m(x, y)
+        y_hat = torch.argmax(logits, dim=1)
+        accuracy = get_accuracy(y, y_hat)
         train_lossi.append(loss)
+        train_acci.append(accuracy)
 
         # val
         x, y = data_loader('val')
-        _, loss = m(x, y)
+        logits, loss = m(x, y)
+        y_hat = torch.argmax(logits, dim=1)
+        accuracy = get_accuracy(y, y_hat)
         val_lossi.append(loss)
+        val_acci.append(accuracy)
+    
     train_loss = torch.tensor(train_lossi).mean()
     val_loss = torch.tensor(val_lossi).mean()
+    train_acc = torch.tensor(train_acci).mean()
+    val_acc = torch.tensor(val_acci).mean()
     m.train()
-    return train_loss, val_loss
+    return train_loss, val_loss, train_acc, val_acc
 
 
 # model
@@ -140,8 +161,8 @@ for step in range(steps):
     loss.backward()
     optimizer.step()
     if step % eval_step == 0:
-      train_loss, val_loss = get_loss(c)
-      print(f'Step {step}:  Train Loss: {train_loss.item():.4f},  Val Loss: {val_loss.item():.4f}')
+      train_loss, val_loss, train_acc, val_acc = get_metrics(c)
+      print(f'Step {step}:  Train Loss: {train_loss.item():.4f}, Train Accuracy: {train_acc.item():.4f}, Val Loss: {val_loss.item():.4f}, Val Accuracy: {val_acc.item():.4f}')
 
 et = time.time()
 
@@ -153,12 +174,22 @@ print(f'Time Elasped: {mins} mins {secs} secs')
 print()
 
 # inference
+print('Prediction for Inference: ')
+
 input = 'It is amazing, what a fabulous day'
 idx = tokenizer.encode(input)
 idx = tokenizer.encode(' ' * (block_size - len(idx))) + idx
 idx = torch.tensor(idx).to(device).view(1, -1)
 op = torch.nn.functional.softmax(c.predict(idx), dim=1)
 predicted_class = torch.argmax(op[0]).item()
-print('Prediction for Inference: ')
+print(f'Input: {input}')
+print(f'Output: {predicted_class}')
+
+input = 'This could have been better, I did not like it.'
+idx = tokenizer.encode(input)
+idx = tokenizer.encode(' ' * (block_size - len(idx))) + idx
+idx = torch.tensor(idx).to(device).view(1, -1)
+op = torch.nn.functional.softmax(c.predict(idx), dim=1)
+predicted_class = torch.argmax(op[0]).item()
 print(f'Input: {input}')
 print(f'Output: {predicted_class}')

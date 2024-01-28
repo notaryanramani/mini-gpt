@@ -33,8 +33,8 @@ val_data = enc_text[split:]
 
 vocab_size = tokenizer.n_vocab
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-n_embd = 32
-block_size = 128
+n_embd = 16
+block_size = 32
 batch_size = 32
 learning_rate = 1e-4
 steps = 20000
@@ -118,7 +118,7 @@ class GPT(nn.Module):
 
 # model-initialization
 
-m = GPT(vocab_size, block_size = block_size, n_embd = n_embd)
+m = GPT(vocab_size, block_size = block_size, n_embd = n_embd, n_layers=2)
 m.to(device)
 optimizer =  torch.optim.AdamW(m.parameters(),  lr=learning_rate)
 

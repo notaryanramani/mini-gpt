@@ -5,7 +5,7 @@ import torch.nn.functional as F
 torch.manual_seed(2000)
 
 # parameters
-dropout = 0.4
+dropout = 0.5
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # ---
 
@@ -21,8 +21,8 @@ class  MultiHead(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, x):
-        out = torch.cat([h(x) for  h in self.heads], dim=-1)
+    def forward(self, q, k, v):
+        out = torch.cat([h(q, k, v) for  h in self.heads], dim=-1)
         out = self.proj(out)
         out = self.dropout(out)
         return out
@@ -73,6 +73,7 @@ class  FeedForward(nn.Module):
             nn.Dropout(dropout)
         )
 
+
     def forward(self, x):
         out = self.net(x)
         return out
@@ -90,6 +91,7 @@ class EncoderBlock(nn.Module):
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
 
+
     def forward(self, x):
         x = self.ln1(x)
         x = x + self.heads(x, x, x)
@@ -102,7 +104,7 @@ class DecoderBlock(nn.Module):
 
     '''A decoder block consisting of MultiHeads followed by a Feed Forward with a default mask'''
 
-    def  __init__(self,  n_embd, block_size, n_head, mask=True, cross_att = False):
+    def  __init__(self,  n_embd, block_size, n_head, mask=True):
         super().__init__()
         head_size = n_embd // n_head
         self.mask_heads = MultiHead(n_embd, block_size, n_head, head_size, mask)
@@ -111,14 +113,13 @@ class DecoderBlock(nn.Module):
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
         self.ln3 = nn.LayerNorm(n_embd)
-        self.cross_att = cross_att
         
 
-    def forward(self, x, enc_x):
+    def forward(self, x, enc_x=None):
         x = self.ln1(x)
         x = self.mask_heads(x, x, x)
         x = self.ln2(x)
-        if self.cross_att:
+        if enc_x is not None:
             x = x + self.heads(x, enc_x, enc_x)
         else:
             x = x + self.heads(x, x, x)
